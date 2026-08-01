@@ -22,4 +22,6 @@ class Settings(BaseSettings):
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+
 settings = Settings()

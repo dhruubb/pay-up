@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(open -a Docker)",
+      "Bash(uv run *)",
+      "Bash(uv sync *)",
+      "Bash(curl *)",
+      "Bash(export TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0N2QwNGRjZi05ZTA2LTRlOTMtODM0Yy1hZTI1YTViNzI0ZTYiLCJleHAiOjE3ODUzMjU2NTh9.vp4zIZo4s9Pmvua44EEG1aMSf8XvnW90AS8xflf1AIE\")",
+      "Bash(pkill -f \"uvicorn app.main:app\")",
+      "Bash(export TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MTY3YzVmMS02ODc4LTRjNmUtYTczOS01ZWU0ZTEyMmU5MjkiLCJleHAiOjE3ODUzMjU5OTZ9.nZJU4H388f-EnmCH0D8gAtdrJbjeWMsvym_-C4NbvmM\")",
+      "Bash(python3 *)",
+      "Bash(docker compose *)",
+      "Bash(pkill -f \"app.workers\")"
+    ]
+  }
+}
