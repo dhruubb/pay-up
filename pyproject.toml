@@ -11,6 +11,7 @@ dependencies = [
     "email-validator>=2.3.0",
     "fastapi>=0.138.2",
     "greenlet>=3.5.3",
+    "prometheus-client>=0.21.0",
     "pwdlib[argon2]>=0.3.0",
     "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
@@ -24,9 +25,23 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "fakeredis>=2.26.0",
     "httpx>=0.28.1",
+    "locust>=2.32.0",
     "mypy>=2.1.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.20",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = "."
+exclude = ["migrations/", "tests/", "scripts/", "loadtest/"]

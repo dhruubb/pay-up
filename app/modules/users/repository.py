@@ -20,6 +20,11 @@ class UserRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_phone(self, phone: str) -> User | None:
+        stmt = select(User).where(User.phone == phone)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def create(self, user: User) -> User:
         self.db.add(user)
         await self.db.flush()

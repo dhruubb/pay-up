@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
+from app.core.rate_limit import rate_limit_by_user
 from app.db.session import get_db
 from app.models.user import User
 from app.modules.payments.schema import (
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
     "",
     response_model=PaymentResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit_by_user("payment_initiate", limit=10, window_seconds=60))],
 )
 async def initiate_payment(
     request: PaymentCreateRequest,

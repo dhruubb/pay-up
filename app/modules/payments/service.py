@@ -13,6 +13,7 @@ from app.core.exceptions import (
     InvalidOperationError,
     NotFoundError,
 )
+from app.core.metrics import idempotency_replays_total, payment_amount_paise, payments_total
 from app.models.audit_log import AuditActorType
 from app.models.idempotency_key import IdempotencyStatus
 from app.models.ledger_entry import LedgerEntryType
@@ -117,6 +118,11 @@ class PaymentService:
             )
 
         if key_row and key_row.status == IdempotencyStatus.COMPLETED:
+            # response_snapshot is always set at the same time status is set
+            # to COMPLETED (see the two commit sites below) — the type is
+            # nullable only because the column starts NULL for IN_PROGRESS rows.
+            assert key_row.response_snapshot is not None
+            idempotency_replays_total.inc()
             return self._replay(key_row.response_snapshot)
 
         if key_row and key_row.status == IdempotencyStatus.IN_PROGRESS:
@@ -152,6 +158,8 @@ class PaymentService:
             raise NotFoundError("VPA", request.sender_vpa)
 
         sender_account = await self.account_repo.get_by_id(sender_vpa.account_id)
+        # A VPA's account_id always resolves — accounts are never deleted.
+        assert sender_account is not None
         if sender_account.user_id != user_id:
             raise AuthorizationError("You can only pay from your own VPA")
 
@@ -179,21 +187,25 @@ class PaymentService:
 
         # Leg 1: debit the sender. This is its own commit — simulating a real
         # call to the sender's bank, which is a separate system that has no
-        # idea whether the receiver's bank will ever be reachable.
+        # idea whether the receiver's bank will ever be reachable. Locked on
+        # the sender account so a concurrent payment/transfer against it
+        # can't read a stale balance mid-flight (see LedgerService.locked).
         try:
-            await self.ledger_service.post_entry(
-                payment.sender_account_id,
-                LedgerEntryType.DEBIT,
-                payment.amount_paise,
-                payment_id=payment.id,
-            )
-            await self._record_event(payment, PaymentEventType.DEBITED)
-            await self.db.commit()
+            async with self.ledger_service.locked(payment.sender_account_id):
+                await self.ledger_service.post_entry(
+                    payment.sender_account_id,
+                    LedgerEntryType.DEBIT,
+                    payment.amount_paise,
+                    payment_id=payment.id,
+                )
+                await self._record_event(payment, PaymentEventType.DEBITED)
+                await self.db.commit()
         except AppException as exc:
             payment.status = PaymentStatus.FAILED
             payment.failure_reason = f"Debit failed: {exc.message}"
             payment.completed_at = datetime.now(UTC)
             await self._record_event(payment, PaymentEventType.FAILED)
+            payments_total.labels(status="FAILED").inc()
             await self.audit_service.log(
                 actor_type=AuditActorType.USER,
                 actor_id=user_id,
@@ -209,25 +221,29 @@ class PaymentService:
         # so we must compensate by refunding the sender — there is no shared
         # transaction spanning both legs to roll back.
         try:
-            await self.ledger_service.post_entry(
-                payment.receiver_account_id,
-                LedgerEntryType.CREDIT,
-                payment.amount_paise,
-                payment_id=payment.id,
-            )
-            await self._record_event(payment, PaymentEventType.CREDITED)
-            await self.db.commit()
+            async with self.ledger_service.locked(payment.receiver_account_id):
+                await self.ledger_service.post_entry(
+                    payment.receiver_account_id,
+                    LedgerEntryType.CREDIT,
+                    payment.amount_paise,
+                    payment_id=payment.id,
+                )
+                await self._record_event(payment, PaymentEventType.CREDITED)
+                await self.db.commit()
         except AppException as exc:
-            await self.ledger_service.post_entry(
-                payment.sender_account_id,
-                LedgerEntryType.CREDIT,
-                payment.amount_paise,
-                payment_id=payment.id,
-            )
+            async with self.ledger_service.locked(payment.sender_account_id):
+                await self.ledger_service.post_entry(
+                    payment.sender_account_id,
+                    LedgerEntryType.CREDIT,
+                    payment.amount_paise,
+                    payment_id=payment.id,
+                )
+                await self.db.commit()
             payment.status = PaymentStatus.FAILED
             payment.failure_reason = f"Credit failed, sender refunded: {exc.message}"
             payment.completed_at = datetime.now(UTC)
             await self._record_event(payment, PaymentEventType.FAILED)
+            payments_total.labels(status="FAILED").inc()
             await self.audit_service.log(
                 actor_type=AuditActorType.USER,
                 actor_id=user_id,
@@ -242,6 +258,8 @@ class PaymentService:
         payment.status = PaymentStatus.SUCCESS
         payment.completed_at = datetime.now(UTC)
         await self._record_event(payment, PaymentEventType.SUCCESS)
+        payments_total.labels(status="SUCCESS").inc()
+        payment_amount_paise.observe(payment.amount_paise)
         await self.audit_service.log(
             actor_type=AuditActorType.USER,
             actor_id=user_id,
@@ -265,6 +283,8 @@ class PaymentService:
 
         sender_account = await self.account_repo.get_by_id(payment.sender_account_id)
         receiver_account = await self.account_repo.get_by_id(payment.receiver_account_id)
+        assert sender_account is not None
+        assert receiver_account is not None
         owner_ids = {sender_account.user_id, receiver_account.user_id}
         if user_id not in owner_ids:
             raise AuthorizationError("You do not have access to this payment")

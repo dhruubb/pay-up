@@ -24,4 +24,6 @@ class Settings(BaseSettings):
 
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
 
-settings = Settings()
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+settings = Settings()  # type: ignore[call-arg]  # required fields are loaded from env/.env, not the constructor call site

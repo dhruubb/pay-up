@@ -11,7 +11,25 @@
       "Bash(export TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MTY3YzVmMS02ODc4LTRjNmUtYTczOS01ZWU0ZTEyMmU5MjkiLCJleHAiOjE3ODUzMjU5OTZ9.nZJU4H388f-EnmCH0D8gAtdrJbjeWMsvym_-C4NbvmM\")",
       "Bash(python3 *)",
       "Bash(docker compose *)",
-      "Bash(pkill -f \"app.workers\")"
+      "Bash(pkill -f \"app.workers\")",
+      "Bash(npm --version)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npx --yes playwright --version)",
+      "Bash(npx --yes playwright install chromium --with-deps)",
+      "Bash(node /private/tmp/claude-501/-Users-dhruubb-Desktop-all-pay-up/bff041c8-676b-43be-bc52-354922ff35b0/scratchpad/browser_test.mjs)",
+      "Bash(node scripts/browser_test.mjs)",
+      "Bash(node scripts/browser_test_send.mjs \"receiver1310731281@okpayup\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(npm uninstall *)",
+      "Bash(perl -0777 -pi -e 's/register_user, create_bank, None, open_account, seed_balance/register_user, create_bank, open_account, seed_balance/g' tests/test_ledger.py)",
+      "Bash(docker rm *)",
+      "Bash(sed -i '' '46s/^    receiver = /    _receiver = /' tests/test_payments.py)",
+      "Bash(sed -i '' '110s/^    receiver = /    _receiver = /' tests/test_payments.py)",
+      "Bash(sed -i '' '190s/^    owner = /    _owner = /' tests/test_payments.py)",
+      "Bash(sed -i '' '245s/^    receiver = /    _receiver = /' tests/test_payments.py)",
+      "Bash(sed -i '' '64s/^    receiver = /    _receiver = /' tests/test_rate_limit.py)"
     ]
   }
 }

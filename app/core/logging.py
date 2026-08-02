@@ -24,6 +24,7 @@ def configure_logging() -> None:
         structlog.processors.format_exc_info,
     ]
 
+    renderer: structlog.typing.Processor
     if settings.ENV == "development":
         renderer = structlog.dev.ConsoleRenderer()
     else:

@@ -98,7 +98,7 @@ class InsufficientFundsError(AppException):
         super().__init__(
             message=message,
             error_code="INSUFFICIENT_FUNDS",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
 
@@ -109,7 +109,7 @@ class AccountNotActiveError(AppException):
         super().__init__(
             message=message,
             error_code="ACCOUNT_NOT_ACTIVE",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
 
@@ -120,7 +120,7 @@ class InvalidOperationError(AppException):
         super().__init__(
             message=message,
             error_code="INVALID_OPERATION",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
 
@@ -134,3 +134,19 @@ class IdempotencyConflictError(AppException):
             error_code="IDEMPOTENCY_CONFLICT",
             status_code=status.HTTP_409_CONFLICT,
         )
+
+
+# --- Rate Limiting ---
+
+
+class RateLimitExceededError(AppException):
+    """Raised when a client exceeds a rate limit. Carries retry_after so the
+    exception handler can set a Retry-After header."""
+
+    def __init__(self, retry_after: int, message: str = "Too many requests"):
+        super().__init__(
+            message=message,
+            error_code="RATE_LIMIT_EXCEEDED",
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+        self.retry_after = retry_after

@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: payup-api
+    static_configs:
+      # host.docker.internal resolves to the machine running Docker Desktop —
+      # the API itself isn't containerized (it runs via `uv run uvicorn`
+      # directly on the host), so Prometheus (which IS containerized here)
+      # needs this to reach out of its own network.
+      - targets: ["host.docker.internal:8123"]

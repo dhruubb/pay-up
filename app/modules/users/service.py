@@ -25,6 +25,10 @@ class UserService:
         if existing:
             raise DuplicateError("User", "email")
 
+        existing_phone = await self.repo.get_by_phone(request.phone)
+        if existing_phone:
+            raise DuplicateError("User", "phone")
+
         user = User(
             name=request.name,
             email=request.email,

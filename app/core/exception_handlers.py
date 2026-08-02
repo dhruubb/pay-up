@@ -24,7 +24,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, RateLimitExceededError
 
 logger = structlog.get_logger(__name__)
 
@@ -40,6 +40,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         The exception already carries its status code, error code, and message,
         so we just unpack it into a consistent response shape.
         """
+        headers = None
+        if isinstance(exc, RateLimitExceededError):
+            headers = {"Retry-After": str(exc.retry_after)}
+
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -47,6 +51,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": exc.message,
                 "detail": None,
             },
+            headers=headers,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -69,7 +74,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             {k: v for k, v in error.items() if k != "ctx"} for error in exc.errors()
         ]
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={
                 "error_code": "VALIDATION_ERROR",
                 "message": "Request validation failed",

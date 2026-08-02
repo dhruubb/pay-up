@@ -1,9 +1,17 @@
 """
-Standalone process: consumes payment events from Kafka and creates
-notifications.
+Consumes payment events from Kafka and creates notifications.
 
-Run separately from the API process:
-    uv run python -m app.workers.notification_worker
+Runs two ways:
+  1. Embedded in the API process — app/main.py starts run_forever() as a
+     background asyncio task on startup, so `uv run uvicorn app.main:app`
+     alone is enough for the whole notification pipeline to work (Kafka
+     itself still needs `docker compose up -d zookeeper kafka` — that's a
+     separate broker process, not something this app can start on its own).
+     This is a dev-convenience tradeoff: a real production deployment would
+     run this as its own independently-scalable process instead, exactly
+     like option 2.
+  2. Standalone:
+         uv run python -m app.workers.notification_worker
 
 Delivery is at-least-once: the Kafka offset is only committed after the
 notification is durably written, so a crash mid-processing replays the event
@@ -31,6 +39,7 @@ logger = structlog.get_logger("notification_worker")
 
 TOPIC = "payment-events"
 GROUP_ID = "notification-worker"
+RECONNECT_DELAY_SECONDS = 5
 
 
 def _format_amount(amount_paise: int) -> str:
@@ -57,9 +66,14 @@ async def handle_event(event: dict) -> None:
             return
 
         sender_account = await account_repo.get_by_id(payment.sender_account_id)
+        # Accounts are never deleted in this app — a payment's account FK is
+        # always resolvable. Asserting documents that invariant for readers
+        # (and mypy) rather than silently handling a case that can't happen.
+        assert sender_account is not None
 
         if event_type == "SUCCESS":
             receiver_account = await account_repo.get_by_id(payment.receiver_account_id)
+            assert receiver_account is not None
             await notification_repo.create(
                 Notification(
                     user_id=sender_account.user_id,
@@ -96,36 +110,58 @@ async def handle_event(event: dict) -> None:
         )
 
 
+async def run_forever() -> None:
+    """
+    Never returns under normal operation — safe to launch as a background
+    asyncio task (see app/main.py's lifespan) or drive from main() below.
+
+    If Kafka isn't reachable (not started yet, or restarting), this retries
+    the connection every RECONNECT_DELAY_SECONDS instead of crashing the
+    whole task — consumer group offsets pick up right where they left off
+    once Kafka becomes available, with no need to restart the API.
+    """
+    while True:
+        consumer = AIOKafkaConsumer(
+            TOPIC,
+            bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+            group_id=GROUP_ID,
+            auto_offset_reset="earliest",
+            enable_auto_commit=False,
+        )
+        try:
+            await consumer.start()
+            logger.info("notification_worker_started", topic=TOPIC)
+            async for message in consumer:
+                event = json.loads(message.value)
+                # Re-bind the request_id carried on the event so every log
+                # line for this message correlates back to the API request
+                # that originally triggered the payment — same ID as in the
+                # API's and the outbox publisher's logs for this payment.
+                with structlog.contextvars.bound_contextvars(request_id=event.get("request_id")):
+                    try:
+                        await handle_event(event)
+                    except Exception:
+                        logger.exception(
+                            "event_processing_failed",
+                            event_id=event.get("event_id"),
+                        )
+                        continue
+                    await consumer.commit()
+        except asyncio.CancelledError:
+            raise  # let the app shut this down cleanly, don't treat it as a retryable failure
+        except Exception:
+            logger.warning(
+                "notification_worker_lost_connection_retrying",
+                retry_in_seconds=RECONNECT_DELAY_SECONDS,
+            )
+            await asyncio.sleep(RECONNECT_DELAY_SECONDS)
+        finally:
+            await consumer.stop()
+
+
 async def main() -> None:
     configure_logging()
-    consumer = AIOKafkaConsumer(
-        TOPIC,
-        bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-        group_id=GROUP_ID,
-        auto_offset_reset="earliest",
-        enable_auto_commit=False,
-    )
-    await consumer.start()
-    logger.info("notification_worker_started", topic=TOPIC)
-    try:
-        async for message in consumer:
-            event = json.loads(message.value)
-            # Re-bind the request_id carried on the event so every log line
-            # for this message correlates back to the API request that
-            # originally triggered the payment — same ID as in the API's
-            # and the outbox publisher's logs for this payment.
-            with structlog.contextvars.bound_contextvars(request_id=event.get("request_id")):
-                try:
-                    await handle_event(event)
-                except Exception:
-                    logger.exception(
-                        "event_processing_failed",
-                        event_id=event.get("event_id"),
-                    )
-                    continue
-                await consumer.commit()
-    finally:
-        await consumer.stop()
+    await run_forever()
 
 
 if __name__ == "__main__":
