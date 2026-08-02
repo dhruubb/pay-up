@@ -1,0 +1,45 @@
+# Render Blueprint — see https://render.com/docs/blueprint-spec
+#
+# Deploy: connect this repo in the Render dashboard as a Blueprint, or apply
+# these same settings manually to a Web Service if you'd rather not use
+# Blueprints.
+#
+# Database: SQLite on a persistent disk (requires the Starter plan or above —
+# Render's free tier doesn't support persistent disks). Kafka and Redis are
+# NOT provisioned here — this app degrades gracefully without them (payments
+# and auth work fine; you just won't get real-time notifications or actual
+# rate limiting until you point KAFKA_BOOTSTRAP_SERVERS / REDIS_URL at real
+# managed services). See app/workers/*.py and app/core/rate_limit.py for the
+# fail-open/retry behavior that makes this safe.
+
+services:
+  - type: web
+    name: pay-up-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: payup-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: APP_NAME
+        value: Pay-Up
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        value: sqlite:////var/data/payup.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: "localhost:9092" # placeholder — point at a real managed Kafka (e.g. Confluent Cloud, Upstash) to enable notifications
+      - key: REDIS_URL
+        value: "redis://localhost:6379/0" # placeholder — point at a real managed Redis (Render offers one) to enable rate limiting
